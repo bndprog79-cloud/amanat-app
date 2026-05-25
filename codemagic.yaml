@@ -14,21 +14,11 @@ workflows:
     scripts:
       - name: Generate missing resources and XML icons
         script: |
-          echo "Поиск папки с Android-проектом..."
-          # Ищем, где лежит папка app, и заходим на один уровень выше
-          PROJECT_ROOT=$(dirname $(find . -name "build.gradle.kts" -o -name "build.gradle" | head -n 1) 2>/dev/null)
-          
-          # Если папка app вложена глубже (например, в amanat_app/app), то корень проекта — amanat_app
-          if [[ "$PROJECT_ROOT" == *"/"* ]]; then
-            PROJECT_ROOT=$(dirname "$PROJECT_ROOT")
-          else
-            PROJECT_ROOT="."
-          fi
-          
-          echo "Проект найден в директории: $PROJECT_ROOT"
-          RES_DIR="$PROJECT_ROOT/app/src/main/res"
+          echo "Переход в папку проекта amanat_app..."
+          cd amanat_app || echo "Корень проекта совпадает с репозиторием"
           
           echo "Генерация системных XML-файлов и адаптивных иконок..."
+          RES_DIR="app/src/main/res"
           mkdir -p "$RES_DIR/xml"
           mkdir -p "$RES_DIR/mipmap-anydpi-v26"
 
@@ -64,38 +54,31 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter
         script: |
-          echo "Автоматический поиск и очистка MainScreen.kt..."
-          MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
+          echo "Переход в папку проекта для очистки кода..."
+          cd amanat_app || echo "Корень проекта совпадает с репозиторием"
           
+          MAIN_SCREEN="app/src/main/java/com/amanat/ui/screens/MainScreen.kt"
           if [ -f "$MAIN_SCREEN" ]; then
-            echo "Файл найден по пути: $MAIN_SCREEN. Удаляем tabIndicatorOffset..."
+            echo "Файл MainScreen.kt найден. Удаляем параметр tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
             echo "Файл успешно скорректирован."
           else
-            echo "Предупреждение: Файл MainScreen.kt не найден в репозитории!"
+            echo "Предупреждение: Файл MainScreen.kt не найден по пути $MAIN_SCREEN"
           fi
 
       - name: Build APK
         script: |
-          echo "Поиск корня сборки Gradle..."
-          # Находим папку, где лежит settings.gradle или settings.gradle.kts
-          BUILD_DIR=$(dirname $(find . -name "settings.gradle*" | head -n 1) 2>/dev/null)
+          echo "Переход в директорию сборки Gradle..."
+          cd amanat_app || echo "Уже в корневом каталоге сборки"
           
-          if [ -z "$BUILD_DIR" ] || [ "$BUILD_DIR" = "." ]; then
-            echo "Сборка в корневом каталоге."
-          else
-            echo "Переходим в папку проекта: $BUILD_DIR"
-            cd "$BUILD_DIR"
-          fi
-
           echo "Настройка прав доступа для локального сборщика..."
           chmod +x gradlew 2>/dev/null || true
           
-          echo "Запуск компиляции приложения..."
+          echo "Запуск компиляции приложения через assembleRelease..."
           if [ -f "./gradlew" ]; then
             ./gradlew assembleRelease
           else
-            echo "Локальный файл gradlew не обнаружен, используем глобальную систему сборки..."
+            echo "Локальный gradlew не найден, запускаем через глобальный Gradle..."
             gradle assembleRelease
           fi
 
