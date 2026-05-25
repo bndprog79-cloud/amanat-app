@@ -26,7 +26,6 @@ workflows:
           fi
 
           echo "=== Шаг 2: Анализ и выравнивание структуры папок ==="
-          # Нам нужно, чтобы папка с исходниками (где лежит src и build.gradle.kts) называлась строго 'app'
           if [ -d "{app" ]; then
             echo "Исправление опечатки папки {app -> app"
             mv "{app" "app"
@@ -35,7 +34,6 @@ workflows:
             mv "amanat_app" "app"
           fi
 
-          # Если проект распаковался глубже, вытаскиваем папку app на поверхность
           if [ ! -d "app" ]; then
             DETECTED_APP=$(find . -maxdepth 3 -type d -name "app" | head -n 1)
             if [ -n "$DETECTED_APP" ] && [ "$DETECTED_APP" != "./app" ]; then
@@ -43,25 +41,16 @@ workflows:
             fi
           fi
 
-          # Если файлы легли прямо в корень, собираем их в папку app
           if [ ! -d "app" ]; then
             mkdir -p app
             find . -maxdepth 1 ! -name "." ! -name ".." ! -name "app" ! -name "amanat_app.tar.gz" ! -name "codemagic.yaml" ! -name "*.md" ! -name "*.txt" -exec mv {} app/ \;
           fi
 
-          echo "=== Шаг 3: Перенос оригинальных файлов настроек Gradle в корень ==="
-          # Ищем оригинальный settings.gradle или settings.gradle.kts внутри распакованного кода
+          echo "=== Шаг 3: Перенос оригинальных файлов настроек Gradle ==="
           ORIG_SETTINGS=$(find ./app -name "settings.gradle*" | head -n 1)
           if [ -n "$ORIG_SETTINGS" ]; then
-            echo "Найден оригинальный файл настроек: $ORIG_SETTINGS. Копируем в корень репозитория..."
+            echo "Найден оригинальный файл настроек: $ORIG_SETTINGS. Копируем в корень..."
             cp "$ORIG_SETTINGS" .
-          fi
-
-          # Ищем оригинальный корневой build.gradle или build.gradle.kts, если он был в архиве
-          ORIG_ROOT_BUILD=$(find ./app -maxdepth 1 -name "build.gradle*" | head -n 1)
-          if [ -n "$ORIG_ROOT_BUILD" ] && [ "$ORIG_ROOT_BUILD" != "./app/build.gradle.kts" ] && [ "$ORIG_ROOT_BUILD" != "./app/build.gradle" ]; then
-            echo "Найден оригинальный корневой build.gradle: $ORIG_ROOT_BUILD. Копируем в корень..."
-            cp "$ORIG_ROOT_BUILD" .
           fi
 
           echo "=== Шаг 4: Генерация XML-ресурсов и иконок ==="
@@ -110,34 +99,40 @@ workflows:
 
       - name: Resolve Gradle Conflicts and Enforce Repositories
         script: |
-          echo "=== Шаг 6: Коррекция конфигурации Gradle под версию 8.x ==="
+          echo "=== Шаг 6: Коррекция конфигурации Gradle и очистка плагинов ==="
           
-          # Если файла settings.gradle.kts в корне всё ещё нет, создаем его с правильным импортом модуля
-          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
-            echo "Создание чистого файла конфигурации репозиториев..."
-            cat <<EOF > settings.gradle.kts
-            pluginManagement {
-                repositories {
-                    google()
-                    mavenCentral()
-                    gradlePluginPortal()
-                }
-            }
-            dependencyResolutionManagement {
-                repositoriesMode.set(RepositoriesMode.PRESERVE_OTHER_REPOS)
-                repositories {
-                    google()
-                    mavenCentral()
-                }
-            }
-            rootProject.name = "amanat-app"
-            include(":app")
-          EOF
+          # Очищаем внутренний app/build.gradle.kts от жестко заданных конфликтующих версий плагинов
+          APP_BUILD="app/build.gradle.kts"
+          if [ -f "$APP_BUILD" ]; then
+            echo "Очистка версий плагинов во внутреннем файле $APP_BUILD для предотвращения конфликтов..."
+            # Удаляем строки 'version "..."' внутри блока plugins модуля app, так как они управляются из корня
+            sed -i '' 's/version "[^"]*"//g' "$APP_BUILD" 2>/dev/null || sed -i 's/version "[^"]*"//g' "$APP_BUILD"
+            # Если плагины объявлены с "version", убираем также "apply false"
+            sed -i '' 's/, apply false//g' "$APP_BUILD" 2>/dev/null || sed -i 's/, apply false//g' "$APP_BUILD"
           fi
 
-          # Очищаем корневой build.gradle.kts, чтобы плагины не объявлялись дважды и не конфликтовали
+          # Настраиваем чистый корневой settings.gradle.kts
+          cat <<EOF > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.PRESERVE_OTHER_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "amanat-app"
+          include(":app")
+          EOF
+
+          # Настраиваем корневой build.gradle.kts, где централизованно задаем версии
           cat <<EOF > build.gradle.kts
-          // Корневой файл очищен скриптом автоматизации для предотвращения конфликтов плагинов дублирования.
           buildscript {
               repositories {
                   google()
@@ -153,7 +148,6 @@ workflows:
       - name: Build Android APK
         script: |
           echo "=== Шаг 7: Запуск компиляции приложения ==="
-          # Запускаем сборку через встроенный скрипт gradlew из вашего архива, если он есть, иначе глобально
           if [ -f "./gradlew" ]; then
             chmod +x gradlew
             ./gradlew :app:assembleRelease --no-daemon
