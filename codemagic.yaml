@@ -58,16 +58,25 @@ workflows:
         script: |
           echo "Добавление расширенных иконок Material в build.gradle.kts..."
           GRADLE_FILE="amanat_app/app/build.gradle.kts"
-          
-          # Проверяем наличие файла конфигурации сборки
           if [ -f "$GRADLE_FILE" ]; then
-            # Вставляем зависимость материальных иконок перед закрывающей скобкой блока dependencies
             sed -i '' '/dependencies {/a\
                 implementation("androidx.compose.material:material-icons-extended")\
             ' "$GRADLE_FILE" 2>/dev/null || sed -i ' /dependencies {/a implementation("androidx.compose.material:material-icons-extended")' "$GRADLE_FILE"
-            echo "Файл конфигурации успешно обновлен."
+          fi
+
+      - name: Fix Tab Indicator Imports
+        script: |
+          echo "Исправление импорта tabIndicatorOffset в MainScreen.kt..."
+          MAIN_SCREEN="amanat_app/app/src/main/java/com/amanat/ui/screens/MainScreen.kt"
+          if [ -f "$MAIN_SCREEN" ]; then
+            # Добавляем импорты для обеих версий (Material 2 и Material 3), чтобы одна из них точно подошла
+            sed -i '' '/package com.amanat.ui.screens/a\
+            import androidx.compose.material.TabRowDefaults.tabIndicatorOffset\
+            import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset\
+            ' "$MAIN_SCREEN" 2>/dev/null || sed -i ' /package com.amanat.ui.screens/a import androidx.compose.material.TabRowDefaults.tabIndicatorOffset\nimport androidx.compose.material3.TabRowDefaults.tabIndicatorOffset' "$MAIN_SCREEN"
+            echo "Импорты успешно добавлены."
           else
-            echo "Файл build.gradle.kts не найден по пути $GRADLE_FILE"
+            echo "Файл MainScreen.kt не найден!"
           fi
 
       - name: Build Android APK
