@@ -14,11 +14,16 @@ workflows:
     scripts:
       - name: Generate missing resources and XML icons
         script: |
-          echo "Переход в папку проекта amanat_app..."
-          cd amanat_app || echo "Корень проекта совпадает с репозиторием"
+          echo "Проверка целевой папки приложения..."
+          # Определяем, как называется папка: {app или app
+          if [ -d "{app" ]; then
+            APP_DIR="{app"
+          else
+            APP_DIR="app"
+          fi
+          echo "Используем директорию приложения: $APP_DIR"
           
-          echo "Генерация системных XML-файлов и адаптивных иконок..."
-          RES_DIR="app/src/main/res"
+          RES_DIR="$APP_DIR/src/main/res"
           mkdir -p "$RES_DIR/xml"
           mkdir -p "$RES_DIR/mipmap-anydpi-v26"
 
@@ -54,23 +59,31 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter
         script: |
-          echo "Переход в папку проекта для очистки кода..."
-          cd amanat_app || echo "Корень проекта совпадает с репозиторием"
+          echo "Поиск и очистка MainScreen.kt..."
+          MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
           
-          MAIN_SCREEN="app/src/main/java/com/amanat/ui/screens/MainScreen.kt"
           if [ -f "$MAIN_SCREEN" ]; then
-            echo "Файл MainScreen.kt найден. Удаляем параметр tabIndicatorOffset..."
+            echo "Файл найден: $MAIN_SCREEN. Очищаем от tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
-            echo "Файл успешно скорректирован."
+            echo "Очистка успешно завершена."
           else
-            echo "Предупреждение: Файл MainScreen.kt не найден по пути $MAIN_SCREEN"
+            echo "Предупреждение: Файл MainScreen.kt не найден."
           fi
 
       - name: Build APK
         script: |
-          echo "Переход в директорию сборки Gradle..."
-          cd amanat_app || echo "Уже в корневом каталоге сборки"
+          echo "Работаем в корневом каталоге сборки..."
           
+          # Если на верхнем уровне нет файлов Gradle, попробуем исправить это динамически
+          if [ ! -f "build.gradle.kts" ] && [ ! -f "build.gradle" ]; then
+             echo "Ищем вложенную папку с конфигурацией Gradle..."
+             NESTED_DIR=$(dirname $(find . -name "settings.gradle*" | head -n 1) 2>/dev/null)
+             if [ -n "$NESTED_DIR" ] && [ "$NESTED_DIR" != "." ]; then
+                 cd "$NESTED_DIR"
+                 echo "Перешли в папку: $NESTED_DIR"
+             fi
+          fi
+
           echo "Настройка прав доступа для локального сборщика..."
           chmod +x gradlew 2>/dev/null || true
           
@@ -78,7 +91,7 @@ workflows:
           if [ -f "./gradlew" ]; then
             ./gradlew assembleRelease
           else
-            echo "Локальный gradlew не найден, запускаем через глобальный Gradle..."
+            echo "Локальный gradlew не найден, запускаем сборку глобально..."
             gradle assembleRelease
           fi
 
