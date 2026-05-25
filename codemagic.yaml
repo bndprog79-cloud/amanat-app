@@ -6,7 +6,6 @@ workflows:
 
     environment:
       java: 17
-      flutter: stable
 
     triggering:
       events:
@@ -18,27 +17,20 @@ workflows:
           echo "Распаковка архива..."
           tar -xzf amanat_app.tar.gz
 
-      - name: Get Flutter packages
+      - name: Set up Gradle permissions
         script: |
-          echo "Поиск файла pubspec.yaml..."
-          # Автоматически находим папку, в которой лежит pubspec.yaml
-          FLUTTER_DIR=$(find . -name "pubspec.yaml" -exec dirname {} \; | head -n 1)
-          
-          if [ -z "$FLUTTER_DIR" ]; then
-            echo "Ошибка: Файл pubspec.yaml не найден в архиве!"
-            exit 1
-          fi
-          
-          echo "Проект Flutter найден в папке: $FLUTTER_DIR"
-          cd "$FLUTTER_DIR"
-          flutter packages pub get
-          
-          # Сохраняем путь для следующего шага сборки
-          echo "$FLUTTER_DIR" > "$BASEDIR/flutter_path.txt"
-      
+          echo "Настройка прав доступа для Gradle..."
+          # Переходим в папку с проектом, где лежат настройки Gradle
+          cd amanat_app
+          # Даем системе права на выполнение утилиты сборки gradlew
+          chmod +x gradlew
+
       - name: Build Android APK
         script: |
-          # Считываем сохраненный путь к проекту
-          FLUTTER_DIR=$(cat "$BASEDIR/flutter_path.txt")
-          cd "$FLUTTER_DIR"
-          flutter build apk --release
+          echo "Запуск сборки Android приложения через Gradle..."
+          cd amanat_app
+          # Запускаем сборку релизного APK (assembleRelease)
+          ./gradlew assembleRelease
+
+    artifacts:
+      - amanat_app/app/build/outputs/apk/release/*.apk
