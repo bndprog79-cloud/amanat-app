@@ -17,11 +17,19 @@ workflows:
           echo "Распаковка архива..."
           tar -xzf amanat_app.tar.gz
 
+      - name: Merge resources and fix folder typo
+        script: |
+          echo "Проверка и исправление структуры ресурсов..."
+          # Если папка с опечаткой {app существует, копируем её содержимое в основную папку app
+          if [ -d "amanat_app/{app" ]; then
+            echo "Обнаружена папка с опечаткой {app. Объединяем ресурсы..."
+            cp -R amanat_app/\{app/* amanat_app/app/ 2>/dev/null || true
+          fi
+
       - name: Build Android APK
         script: |
           echo "Запуск сборки Android приложения через глобальный Gradle..."
           cd amanat_app
-          # Используем глобальный установленный gradle вместо отсутствующего gradlew
           gradle assembleRelease
 
     artifacts:
