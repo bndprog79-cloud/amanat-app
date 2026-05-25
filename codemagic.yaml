@@ -12,20 +12,21 @@ workflows:
         - push
 
     scripts:
-      - name: Generate missing resources and XML icons
+      - name: Fix directory structure and resources
         script: |
-          echo "Определяем рабочую папку приложения..."
+          echo "Приведение структуры папок к стандартному виду..."
+          # Если папка всё ещё называется {app, исправляем это
           if [ -d "{app" ]; then
-            APP_DIR="{app"
-          elif [ -d "app" ]; then
-            APP_DIR="app"
-          else
-            APP_DIR="app"
-            mkdir -p app/src/main/res
+            mv "{app" "app"
           fi
-          echo "Выбрана папка: $APP_DIR"
-          
-          RES_DIR="$APP_DIR/src/main/res"
+
+          if [ ! -d "app" ]; then
+            echo "Критическая ошибка: Папка с исходным кодом приложения не найдена!"
+            exit 1
+          fi
+
+          echo "Генерация системных XML-файлов и адаптивных иконок..."
+          RES_DIR="app/src/main/res"
           mkdir -p "$RES_DIR/xml"
           mkdir -p "$RES_DIR/mipmap-anydpi-v26"
 
@@ -61,55 +62,62 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter
         script: |
-          echo "Поиск и исправление MainScreen.kt..."
+          echo "Очистка MainScreen.kt от проблемного параметра..."
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
           if [ -n "$MAIN_SCREEN" ] && [ -f "$MAIN_SCREEN" ]; then
-            echo "Файл найден: $MAIN_SCREEN. Очищаем tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
+            echo "Файл MainScreen.kt успешно очищен."
           fi
+
+      - name: Recreate Gradle Build Configuration
+        script: |
+          echo "Принудительное создание правильной корневой конфигурации Gradle..."
+          
+          # Перезаписываем settings.gradle.kts с явным указанием репозиториев для плагинов
+          cat <<EOF > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.PRESERVE_OTHER_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "amanat-app"
+          include(":app")
+          EOF
+
+          # Создаем корректный корневой build.gradle.kts
+          cat <<EOF > build.gradle.kts
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath("com.android.tools.build:gradle:8.1.0")
+                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0")
+              }
+          }
+
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
 
       - name: Build APK
         script: |
-          echo "Корректировка конфигурации и сборка..."
-          
-          # 1. Если папка называется {app, переименуем её в нормальную 'app' для Gradle
-          if [ -d "{app" ]; then
-            echo "Исправление опечатки: переименование папки {app в app..."
-            mv "{app" "app_temp"
-            rm -rf "{app"
-            mv "app_temp" "app"
-          fi
-
-          # 2. Попробуем найти оригинальные gradle-файлы, которые могли затеряться в подпапках
-          echo "Поиск оригинальных конфигураций Gradle..."
-          ORIG_SETTINGS=$(find . -name "settings.gradle*" ! -path "./settings.gradle*" | head -n 1)
-          if [ -n "$ORIG_SETTINGS" ]; then
-            echo "Найден оригинальный файл настроек: $ORIG_SETTINGS. Копируем в корень..."
-            cp "$ORIG_SETTINGS" ./settings.gradle.kts 2>/dev/null || cp "$ORIG_SETTINGS" ./settings.gradle
-          fi
-
-          # 3. На всякий случай проверяем и гарантируем связь с модулем :app
-          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
-            echo "Создание резервного settings.gradle.kts..."
-            echo 'rootProject.name = "amanat-app"' > settings.gradle.kts
-            echo 'include(":app")' >> settings.gradle.kts
-          fi
-
-          # 4. Если в корне всё ещё нет build.gradle, создаем базовый импорт
-          if [ ! -f "build.gradle.kts" ] && [ ! -f "build.gradle" ]; then
-            cat <<EOF > build.gradle.kts
-            plugins {
-                id("com.android.application") version "8.2.2" apply false
-                id("org.jetbrains.kotlin.android") version "1.9.22" apply false
-            }
-          EOF
-          fi
-
-          echo "Проверка доступных задач в проекте:"
-          gradle tasks --no-daemon || true
-
-          echo "Запуск компиляции..."
-          gradle :app:assembleRelease --no-daemon || gradle assembleRelease --no-daemon
+          echo "Запуск компиляции приложения через глобальный Gradle..."
+          gradle :app:assembleRelease --no-daemon
 
     artifacts:
       - "**/build/outputs/apk/release/*.apk"
