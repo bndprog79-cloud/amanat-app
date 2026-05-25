@@ -2,7 +2,7 @@ workflows:
   android-workflow:
     name: Android Build
     max_build_duration: 120
-    instance_type: mac_mini_m2
+    instance_type: mac_mini_m1
 
     environment:
       java: 17
@@ -14,8 +14,21 @@ workflows:
     scripts:
       - name: Generate missing resources and XML icons
         script: |
+          echo "Поиск папки с Android-проектом..."
+          # Ищем, где лежит папка app, и заходим на один уровень выше
+          PROJECT_ROOT=$(dirname $(find . -name "build.gradle.kts" -o -name "build.gradle" | head -n 1) 2>/dev/null)
+          
+          # Если папка app вложена глубже (например, в amanat_app/app), то корень проекта — amanat_app
+          if [[ "$PROJECT_ROOT" == *"/"* ]]; then
+            PROJECT_ROOT=$(dirname "$PROJECT_ROOT")
+          else
+            PROJECT_ROOT="."
+          fi
+          
+          echo "Проект найден в директории: $PROJECT_ROOT"
+          RES_DIR="$PROJECT_ROOT/app/src/main/res"
+          
           echo "Генерация системных XML-файлов и адаптивных иконок..."
-          RES_DIR="app/src/main/res"
           mkdir -p "$RES_DIR/xml"
           mkdir -p "$RES_DIR/mipmap-anydpi-v26"
 
@@ -47,33 +60,44 @@ workflows:
           EOF
 
           cp "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml" "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml"
-          
-          # Очищаем старые PNG-иконки, если они есть, чтобы избежать конфликтов
           rm -f $RES_DIR/mipmap-*dpi/ic_launcher*.png 2>/dev/null || true
 
       - name: Safe Remove Tab Indicator Parameter
         script: |
-          echo "Очистка проблемного параметра indicator из MainScreen.kt..."
-          MAIN_SCREEN="app/src/main/java/com/amanat/ui/screens/MainScreen.kt"
+          echo "Автоматический поиск и очистка MainScreen.kt..."
+          MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
+          
           if [ -f "$MAIN_SCREEN" ]; then
+            echo "Файл найден по пути: $MAIN_SCREEN. Удаляем tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
-            echo "Файл успешно исправлен."
+            echo "Файл успешно скорректирован."
           else
-            echo "Предупреждение: Файл MainScreen.kt не найден по пути $MAIN_SCREEN"
+            echo "Предупреждение: Файл MainScreen.kt не найден в репозитории!"
           fi
 
       - name: Build APK
         script: |
-          echo "Настройка прав доступа для сборщика..."
+          echo "Поиск корня сборки Gradle..."
+          # Находим папку, где лежит settings.gradle или settings.gradle.kts
+          BUILD_DIR=$(dirname $(find . -name "settings.gradle*" | head -n 1) 2>/dev/null)
+          
+          if [ -z "$BUILD_DIR" ] || [ "$BUILD_DIR" = "." ]; then
+            echo "Сборка в корневом каталоге."
+          else
+            echo "Переходим в папку проекта: $BUILD_DIR"
+            cd "$BUILD_DIR"
+          fi
+
+          echo "Настройка прав доступа для локального сборщика..."
           chmod +x gradlew 2>/dev/null || true
           
           echo "Запуск компиляции приложения..."
           if [ -f "./gradlew" ]; then
             ./gradlew assembleRelease
           else
-            echo "Локальный gradlew не найден, используем глобальный Gradle..."
+            echo "Локальный файл gradlew не обнаружен, используем глобальную систему сборки..."
             gradle assembleRelease
           fi
 
     artifacts:
-      - app/build/outputs/apk/release/*.apk
+      - "**/build/outputs/apk/release/*.apk"
