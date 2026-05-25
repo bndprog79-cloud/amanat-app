@@ -13,21 +13,16 @@ workflows:
         - push
 
     scripts:
-      - name: Extract project archive
+      - name: Diagnostic - Check folder structure
         script: |
-          echo "Распаковка архива проекта..."
+          echo "==== РАСПАКОВКА АРХИВА ===="
           tar -xzf amanat_app.tar.gz
-          # Проверяем, распаковался ли проект напрямую или создалась подпапка
+          
+          echo "==== ЧТО НАХОДИТСЯ В КОРНЕ КЛОНА ===="
           ls -la
-
-      - name: Get Flutter packages
-        script: |
-          # Если архив распаковался в подпапку amanat_app, переходим в неё. 
-          # Если файлы распаковались сразу в корень, скрипт просто пойдет дальше.
-          if [ -d "amanat_app" ]; then cd amanat_app; fi
-          flutter packages pub get
-      
-      - name: Build Android APK
-        script: |
-          if [ -d "amanat_app" ]; then cd amanat_app; fi
-          flutter build apk --release
+          
+          echo "==== ПРОВЕРКА СОДЕРЖИМОГО ПАПКИ amanat_app (если она есть) ===="
+          if [ -d "amanat_app" ]; then ls -la amanat_app; else echo "Папки amanat_app не существует"; fi
+          
+          echo "==== КОНЕЦ ДИАГНОСТИКИ ===="
+          exit 1
