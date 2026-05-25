@@ -97,26 +97,32 @@ workflows:
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
           fi
 
-      - name: Resolve Gradle Conflicts and Enforce Repositories
+      - name: Recreate Safe Gradle Architecture
         script: |
-          echo "=== Шаг 6: Коррекция конфигурации Gradle и очистка плагинов ==="
+          echo "=== Шаг 6: Развертывание гибкой архитектуры Gradle ==="
           
-          APP_BUILD="app/build.gradle.kts"
-          if [ -f "$APP_BUILD" ]; then
-            echo "Глубокая очистка объявлений плагинов во внутреннем файле $APP_BUILD..."
-            # Нам нужно удалить из внутреннего файла конструкции версий и флагов apply, 
-            # чтобы они не конфликтовали с глобальным buildscript
-            sed -i '' 's/version "[^"]*"//g' "$APP_BUILD" 2>/dev/null || sed -i 's/version "[^"]*"//g' "$APP_BUILD"
-            sed -i '' 's/, apply false//g' "$APP_BUILD" 2>/dev/null || sed -i 's/, apply false//g' "$APP_BUILD"
-          fi
+          # Очищаем корневой каталог от старых файлов конфигурации, чтобы начать с чистого листа
+          rm -f build.gradle build.gradle.kts settings.gradle settings.gradle.kts
 
-          # Настраиваем чистый, синтаксически верный settings.gradle.kts
+          # Создаем переопределяющий settings.gradle.kts
+          # Мы используем resolutionStrategy, чтобы ПРИНУДИТЕЛЬНО выставить стабильные версии 
+          # для любых плагинов, которые попытается запросить внутренний app/build.gradle.kts
           cat <<EOF > settings.gradle.kts
           pluginManagement {
               repositories {
                   google()
                   mavenCentral()
                   gradlePluginPortal()
+              }
+              resolutionStrategy {
+                  eachPlugin {
+                      if (requested.id.id == "com.android.application" || requested.id.id == "com.android.library") {
+                          useVersion("8.2.2")
+                      }
+                      if (requested.id.id.startsWith("org.jetbrains.kotlin")) {
+                          useVersion("1.9.0")
+                      }
+                  }
               }
           }
           dependencyResolutionManagement {
@@ -130,19 +136,8 @@ workflows:
           include(":app")
           EOF
 
-          # Настраиваем корневой build.gradle.kts с правильными версиями зависимостей
-          cat <<EOF > build.gradle.kts
-          buildscript {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath("com.android.tools.build:gradle:8.2.2")
-                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0")
-              }
-          }
-          EOF
+          # Пустой корневой build.gradle.kts, так как управление теперь идёт через настройки и модуль app
+          touch build.gradle.kts
 
       - name: Build Android APK
         script: |
