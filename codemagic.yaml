@@ -25,31 +25,46 @@ workflows:
             exit 1
           fi
 
-          echo "=== Шаг 2: Анализ распакованной структуры ==="
+          echo "=== Шаг 2: Анализ и выравнивание структуры папок ==="
+          # Нам нужно, чтобы папка с исходниками (где лежит src и build.gradle.kts) называлась строго 'app'
           if [ -d "{app" ]; then
-            echo "Обнаружена папка {app, переименовываем в стандартную 'app'..."
+            echo "Исправление опечатки папки {app -> app"
             mv "{app" "app"
           elif [ -d "amanat_app" ]; then
-            echo "Обнаружена папка amanat_app, переименовываем в 'app'..."
+            echo "Переименование amanat_app -> app"
             mv "amanat_app" "app"
           fi
 
+          # Если проект распаковался глубже, вытаскиваем папку app на поверхность
           if [ ! -d "app" ]; then
-            echo "Поиск папки приложения в подкаталогах..."
             DETECTED_APP=$(find . -maxdepth 3 -type d -name "app" | head -n 1)
             if [ -n "$DETECTED_APP" ] && [ "$DETECTED_APP" != "./app" ]; then
-              echo "Папка приложения найдена в: $DETECTED_APP. Перемещаем в корень..."
               mv "$DETECTED_APP" ./app
             fi
           fi
 
+          # Если файлы легли прямо в корень, собираем их в папку app
           if [ ! -d "app" ]; then
-            echo "Папка 'app' не найдена. Формируем структуру..."
             mkdir -p app
             find . -maxdepth 1 ! -name "." ! -name ".." ! -name "app" ! -name "amanat_app.tar.gz" ! -name "codemagic.yaml" ! -name "*.md" ! -name "*.txt" -exec mv {} app/ \;
           fi
 
-          echo "=== Шаг 3: Генерация XML-ресурсов и иконок ==="
+          echo "=== Шаг 3: Перенос оригинальных файлов настроек Gradle в корень ==="
+          # Ищем оригинальный settings.gradle или settings.gradle.kts внутри распакованного кода
+          ORIG_SETTINGS=$(find ./app -name "settings.gradle*" | head -n 1)
+          if [ -n "$ORIG_SETTINGS" ]; then
+            echo "Найден оригинальный файл настроек: $ORIG_SETTINGS. Копируем в корень репозитория..."
+            cp "$ORIG_SETTINGS" .
+          fi
+
+          # Ищем оригинальный корневой build.gradle или build.gradle.kts, если он был в архиве
+          ORIG_ROOT_BUILD=$(find ./app -maxdepth 1 -name "build.gradle*" | head -n 1)
+          if [ -n "$ORIG_ROOT_BUILD" ] && [ "$ORIG_ROOT_BUILD" != "./app/build.gradle.kts" ] && [ "$ORIG_ROOT_BUILD" != "./app/build.gradle" ]; then
+            echo "Найден оригинальный корневой build.gradle: $ORIG_ROOT_BUILD. Копируем в корень..."
+            cp "$ORIG_ROOT_BUILD" .
+          fi
+
+          echo "=== Шаг 4: Генерация XML-ресурсов и иконок ==="
           RES_DIR="app/src/main/res"
           mkdir -p "$RES_DIR/xml"
           mkdir -p "$RES_DIR/mipmap-anydpi-v26"
@@ -86,41 +101,43 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter
         script: |
-          echo "=== Шаг 4: Очистка кода от устаревших параметров ==="
+          echo "=== Шаг 5: Очистка кода от устаревших параметров ==="
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
           if [ -n "$MAIN_SCREEN" ] && [ -f "$MAIN_SCREEN" ]; then
             echo "Файл найден: $MAIN_SCREEN. Удаляем параметр tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
-          else
-            echo "Файл MainScreen.kt не найден в распакованном коде, пропускаем."
           fi
 
-      - name: Recreate Gradle Build Configuration
+      - name: Resolve Gradle Conflicts and Enforce Repositories
         script: |
-          echo "=== Шаг 5: Конфигурация системных файлов Gradle ==="
+          echo "=== Шаг 6: Коррекция конфигурации Gradle под версию 8.x ==="
           
-          # Оставляем централизованное управление репозиториями здесь
-          cat <<EOF > settings.gradle.kts
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.name = "amanat-app"
-          include(":app")
+          # Если файла settings.gradle.kts в корне всё ещё нет, создаем его с правильным импортом модуля
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            echo "Создание чистого файла конфигурации репозиториев..."
+            cat <<EOF > settings.gradle.kts
+            pluginManagement {
+                repositories {
+                    google()
+                    mavenCentral()
+                    gradlePluginPortal()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.PRESERVE_OTHER_REPOS)
+                repositories {
+                    google()
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "amanat-app"
+            include(":app")
           EOF
+          fi
 
-          # Удаляем конфликтующий блок allprojects, оставляем только плагины сборки
+          # Очищаем корневой build.gradle.kts, чтобы плагины не объявлялись дважды и не конфликтовали
           cat <<EOF > build.gradle.kts
+          // Корневой файл очищен скриптом автоматизации для предотвращения конфликтов плагинов дублирования.
           buildscript {
               repositories {
                   google()
@@ -135,8 +152,14 @@ workflows:
 
       - name: Build Android APK
         script: |
-          echo "=== Шаг 6: Запуск компиляции приложения ==="
-          gradle :app:assembleRelease --no-daemon
+          echo "=== Шаг 7: Запуск компиляции приложения ==="
+          # Запускаем сборку через встроенный скрипт gradlew из вашего архива, если он есть, иначе глобально
+          if [ -f "./gradlew" ]; then
+            chmod +x gradlew
+            ./gradlew :app:assembleRelease --no-daemon
+          else
+            gradle :app:assembleRelease --no-daemon
+          fi
 
     artifacts:
       - "**/build/outputs/apk/release/*.apk"
