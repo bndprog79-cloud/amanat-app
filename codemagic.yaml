@@ -26,8 +26,6 @@ workflows:
           fi
 
           echo "=== Шаг 2: Анализ распакованной структуры ==="
-          # Проверяем, куда распаковались файлы.
-          # Если они распаковались во вложенную папку (например, {app или amanat_app), приведем к стандарту.
           if [ -d "{app" ]; then
             echo "Обнаружена папка {app, переименовываем в стандартную 'app'..."
             mv "{app" "app"
@@ -36,7 +34,6 @@ workflows:
             mv "amanat_app" "app"
           fi
 
-          # Если вдруг проект распаковался так, что 'app' лежит внутри другой подпапки
           if [ ! -d "app" ]; then
             echo "Поиск папки приложения в подкаталогах..."
             DETECTED_APP=$(find . -maxdepth 3 -type d -name "app" | head -n 1)
@@ -46,11 +43,9 @@ workflows:
             fi
           fi
 
-          # Финальная проверка наличия папки приложения
           if [ ! -d "app" ]; then
-            echo "Папка 'app' не найдена. Создаем базовую структуру, если файлы легли в корень напрямую..."
+            echo "Папка 'app' не найдена. Формируем структуру..."
             mkdir -p app
-            # Переносим всё, кроме системных файлов и архива, в папку app
             find . -maxdepth 1 ! -name "." ! -name ".." ! -name "app" ! -name "amanat_app.tar.gz" ! -name "codemagic.yaml" ! -name "*.md" ! -name "*.txt" -exec mv {} app/ \;
           fi
 
@@ -104,6 +99,7 @@ workflows:
         script: |
           echo "=== Шаг 5: Конфигурация системных файлов Gradle ==="
           
+          # Настраиваем settings.gradle.kts с синтаксисом, совместимым с Gradle 8.x
           cat <<EOF > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -113,7 +109,7 @@ workflows:
               }
           }
           dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.PRESERVE_OTHER_REPOS)
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
               repositories {
                   google()
                   mavenCentral()
@@ -123,6 +119,7 @@ workflows:
           include(":app")
           EOF
 
+          # Корневой build.gradle.kts
           cat <<EOF > build.gradle.kts
           buildscript {
               repositories {
@@ -130,7 +127,7 @@ workflows:
                   mavenCentral()
               }
               dependencies {
-                  classpath("com.android.tools.build:gradle:8.1.0")
+                  classpath("com.android.tools.build:gradle:8.2.2")
                   classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0")
               }
           }
