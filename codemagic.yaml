@@ -100,13 +100,9 @@ workflows:
       - name: Recreate Safe Gradle Architecture
         script: |
           echo "=== Шаг 6: Развертывание гибкой архитектуры Gradle ==="
-          
-          # Очищаем корневой каталог от старых файлов конфигурации, чтобы начать с чистого листа
           rm -f build.gradle build.gradle.kts settings.gradle settings.gradle.kts
 
-          # Создаем переопределяющий settings.gradle.kts
-          # Мы используем resolutionStrategy, чтобы ПРИНУДИТЕЛЬНО выставить стабильные версии 
-          # для любых плагинов, которые попытается запросить внутренний app/build.gradle.kts
+          # Настраиваем корневой settings.gradle.kts
           cat <<EOF > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -114,19 +110,9 @@ workflows:
                   mavenCentral()
                   gradlePluginPortal()
               }
-              resolutionStrategy {
-                  eachPlugin {
-                      if (requested.id.id == "com.android.application" || requested.id.id == "com.android.library") {
-                          useVersion("8.2.2")
-                      }
-                      if (requested.id.id.startsWith("org.jetbrains.kotlin")) {
-                          useVersion("1.9.0")
-                      }
-                  }
-              }
           }
           dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositoriesMode.set(RepositoriesMode.PRESERVE_OTHER_REPOS)
               repositories {
                   google()
                   mavenCentral()
@@ -136,18 +122,34 @@ workflows:
           include(":app")
           EOF
 
-          # Пустой корневой build.gradle.kts, так как управление теперь идёт через настройки и модуль app
-          touch build.gradle.kts
+          # В корневом build.gradle.kts мы принудительно внедряем Android-плагин в подпроект :app
+          cat <<EOF > build.gradle.kts
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath("com.android.tools.build:gradle:8.2.2")
+                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0")
+              }
+          }
+
+          // Принудительно подключаем Android Application плагин к модулю :app
+          project(":app") {
+              apply(plugin = "com.android.application")
+              apply(plugin = "org.jetbrains.kotlin.android")
+          }
+          EOF
 
       - name: Build Android APK
         script: |
           echo "=== Шаг 7: Запуск компиляции приложения ==="
-          if [ -f "./gradlew" ]; then
-            chmod +x gradlew
-            ./gradlew :app:assembleRelease --no-daemon
-          else
-            gradle :app:assembleRelease --no-daemon
-          fi
+          # Сначала выведем список доступных тасок для отладки, если что-то пойдет не так
+          gradle :app:tasks --no-daemon || true
+          
+          echo "Запуск финальной сборки..."
+          gradle :app:assembleRelease --no-daemon
 
     artifacts:
       - "**/build/outputs/apk/release/*.apk"
