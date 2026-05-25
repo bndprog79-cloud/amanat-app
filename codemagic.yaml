@@ -14,14 +14,17 @@ workflows:
     scripts:
       - name: Generate missing resources and XML icons
         script: |
-          echo "Проверка целевой папки приложения..."
-          # Определяем, как называется папка: {app или app
+          echo "Определяем правильное имя папки приложения..."
           if [ -d "{app" ]; then
             APP_DIR="{app"
-          else
+          elif [ -d "app" ]; then
             APP_DIR="app"
+          else
+            echo "Папка приложения не найдена, создаем стандартную 'app'..."
+            APP_DIR="app"
+            mkdir -p app/src/main/res
           fi
-          echo "Используем директорию приложения: $APP_DIR"
+          echo "Выбрана папка: $APP_DIR"
           
           RES_DIR="$APP_DIR/src/main/res"
           mkdir -p "$RES_DIR/xml"
@@ -59,41 +62,61 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter
         script: |
-          echo "Поиск и очистка MainScreen.kt..."
+          echo "Поиск и исправление MainScreen.kt..."
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
-          
-          if [ -f "$MAIN_SCREEN" ]; then
-            echo "Файл найден: $MAIN_SCREEN. Очищаем от tabIndicatorOffset..."
+          if [ -n "$MAIN_SCREEN" ] && [ -f "$MAIN_SCREEN" ]; then
+            echo "Файл найден: $MAIN_SCREEN. Очищаем tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
-            echo "Очистка успешно завершена."
           else
-            echo "Предупреждение: Файл MainScreen.kt не найден."
+            echo "Файл MainScreen.kt не найден, пропускаем этот шаг."
           fi
 
       - name: Build APK
         script: |
-          echo "Работаем в корневом каталоге сборки..."
+          echo "Проверка конфигурации Gradle в корне репозитория..."
           
-          # Если на верхнем уровне нет файлов Gradle, попробуем исправить это динамически
-          if [ ! -f "build.gradle.kts" ] && [ ! -f "build.gradle" ]; then
-             echo "Ищем вложенную папку с конфигурацией Gradle..."
-             NESTED_DIR=$(dirname $(find . -name "settings.gradle*" | head -n 1) 2>/dev/null)
-             if [ -n "$NESTED_DIR" ] && [ "$NESTED_DIR" != "." ]; then
-                 cd "$NESTED_DIR"
-                 echo "Перешли в папку: $NESTED_DIR"
-             fi
-          fi
-
-          echo "Настройка прав доступа для локального сборщика..."
-          chmod +x gradlew 2>/dev/null || true
-          
-          echo "Запуск компиляции приложения через assembleRelease..."
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleRelease
+          # Определяем папку приложения для конфигурации
+          if [ -d "{app" ]; then
+            MODULE_NAME="{app"
           else
-            echo "Локальный gradlew не найден, запускаем сборку глобально..."
-            gradle assembleRelease
+            MODULE_NAME="app"
           fi
 
+          # Если файлов Gradle нет на месте, принудительно создаем их!
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            echo "Файлы Gradle не найдены. Генерируем базовый settings.gradle.kts..."
+            cat <<EOF > settings.gradle.kts
+            pluginManagement {
+                repositories {
+                    google()
+                    mavenCentral()
+                    gradlePluginPortal()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    google()
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "amanat-app"
+            include(":$MODULE_NAME")
+          EOF
+          fi
+
+          if [ ! -f "build.gradle.kts" ] && [ ! -f "build.gradle" ]; then
+            echo "Генерируем базовый корневой build.gradle.kts..."
+            cat <<EOF > build.gradle.kts
+            plugins {
+                id("com.android.application") version "8.2.2" apply false
+                id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+            }
+          EOF
+          fi
+
+          echo "Запуск компиляции проекта..."
+          gradle assembleRelease
+          
     artifacts:
       - "**/build/outputs/apk/release/*.apk"
