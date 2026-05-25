@@ -88,13 +88,25 @@ workflows:
           cp "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml" "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml"
           rm -f $RES_DIR/mipmap-*dpi/ic_launcher*.png 2>/dev/null || true
 
-      - name: Safe Remove Tab Indicator Parameter
+      - name: Safe Remove Tab Indicator Parameter and Clear Hardcoded Versions
         script: |
-          echo "=== Шаг 5: Очистка кода от устаревших параметров ==="
+          echo "=== Шаг 5: Очистка кода и адаптация плагинов ==="
+          
+          # 1. Удаляем устаревший параметр разметки
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
           if [ -n "$MAIN_SCREEN" ] && [ -f "$MAIN_SCREEN" ]; then
             echo "Файл найден: $MAIN_SCREEN. Удаляем параметр tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
+          fi
+
+          # 2. Нейтрализуем жесткие версии во внутреннем build.gradle.kts, 
+          # чтобы они не конфликтовали с глобальной сборкой
+          INTERNAL_GRADLE="app/build.gradle.kts"
+          if [ -f "$INTERNAL_GRADLE" ]; then
+            echo "Корректируем внутренний файл конфигурации: $INTERNAL_GRADLE"
+            # Заменяем id("...") version "..." на чистый id("...") без указания версии
+            sed -i '' 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$INTERNAL_GRADLE" 2>/dev/null || sed -i 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$INTERNAL_GRADLE"
+            sed -i '' 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$INTERNAL_GRADLE" 2>/dev/null || sed -i 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$INTERNAL_GRADLE"
           fi
 
       - name: Recreate Safe Gradle Architecture
@@ -102,7 +114,7 @@ workflows:
           echo "=== Шаг 6: Развертывание гибкой архитектуры Gradle ==="
           rm -f build.gradle build.gradle.kts settings.gradle settings.gradle.kts
 
-          # Настраиваем корневой settings.gradle.kts без конфликтующих режимов
+          # Глобальный файл управления зависимостями
           cat <<EOF > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -121,32 +133,17 @@ workflows:
           include(":app")
           EOF
 
-          # В корневом build.gradle.kts мы принудительно инжектим плагины в подпроект :app
+          # Корневой скрипт, определяющий единые стабильные версии для всего проекта
           cat <<EOF > build.gradle.kts
-          buildscript {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath("com.android.tools.build:gradle:8.2.2")
-                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0")
-              }
-          }
-
-          // Принудительно подключаем Android Application плагин к модулю :app
-          project(":app") {
-              apply(plugin = "com.android.application")
-              apply(plugin = "org.jetbrains.kotlin.android")
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.0" apply false
           }
           EOF
 
       - name: Build Android APK
         script: |
           echo "=== Шаг 7: Запуск компиляции приложения ==="
-          gradle :app:tasks --no-daemon || true
-          
-          echo "Запуск финальной сборки..."
           gradle :app:assembleRelease --no-daemon
 
     artifacts:
