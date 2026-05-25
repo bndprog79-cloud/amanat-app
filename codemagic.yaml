@@ -12,17 +12,37 @@ workflows:
         - push
 
     scripts:
-      - name: Fix directory structure and resources
+      - name: Auto-detect and fix directory structure
         script: |
-          echo "Приведение структуры папок к стандартному виду..."
-          # Если папка всё ещё называется {app, исправляем это
-          if [ -d "{app" ]; then
+          echo "=== Автоматический поиск исходного кода приложения ==="
+          
+          # 1. Проверяем стандартный вариант
+          if [ -d "app" ]; then
+            echo "Стандартная папка 'app' на месте."
+          # 2. Проверяем вариант с опечаткой {, который был ранее
+          elif [ -d "{app" ]; then
+            echo "Найдена папка {app, исправляем имя на 'app'..."
             mv "{app" "app"
-          fi
-
-          if [ ! -d "app" ]; then
-            echo "Критическая ошибка: Папка с исходным кодом приложения не найдена!"
-            exit 1
+          else
+            echo "Папка 'app' не найдена в корне. Ищем внутренний модуль Android..."
+            # Ищем, где лежит файл build.gradle или build.gradle.kts, исключая корень
+            FOUND_DIR=$(find . -maxdepth 3 -name "build.gradle*" ! -path "./build.gradle*" | head -n 1)
+            
+            if [ -n "$FOUND_DIR" ]; then
+              # Получаем имя папки, содержащей этот файл
+              ACTUAL_DIR=$(basename $(dirname "$FOUND_DIR"))
+              echo "Исходный код обнаружен в папке: $ACTUAL_DIR"
+              
+              if [ "$ACTUAL_DIR" != "." ] && [ "$ACTUAL_DIR" != "app" ]; then
+                echo "Переименовываем '$ACTUAL_DIR' в стандартную 'app'..."
+                mv "$ACTUAL_DIR" "app"
+              fi
+            else
+              echo "=== СТРУКТУРА РЕПОЗИТОРИЯ ДЛЯ ОТЛАДКИ ==="
+              ls -R
+              echo "Критическая ошибка: Не удалось локализовать файлы Android-проекта."
+              exit 1
+            fi
           fi
 
           echo "Генерация системных XML-файлов и адаптивных иконок..."
@@ -71,9 +91,8 @@ workflows:
 
       - name: Recreate Gradle Build Configuration
         script: |
-          echo "Принудительное создание правильной корневой конфигурации Gradle..."
+          echo "Принудительное пересоздание корневой конфигурации Gradle..."
           
-          # Перезаписываем settings.gradle.kts с явным указанием репозиториев для плагинов
           cat <<EOF > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -93,7 +112,6 @@ workflows:
           include(":app")
           EOF
 
-          # Создаем корректный корневой build.gradle.kts
           cat <<EOF > build.gradle.kts
           buildscript {
               repositories {
@@ -116,7 +134,7 @@ workflows:
 
       - name: Build APK
         script: |
-          echo "Запуск компиляции приложения через глобальный Gradle..."
+          echo "Запуск компиляции приложения..."
           gradle :app:assembleRelease --no-daemon
 
     artifacts:
