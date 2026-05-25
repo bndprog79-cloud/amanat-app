@@ -90,7 +90,7 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter and Clear Hardcoded Versions
         script: |
-          echo "=== Шаг 5: Очистка кода и адаптация плагинов ==="
+          echo "=== Шаг 5: Очистка кода и глобальная адаптация плагинов ==="
           
           # 1. Удаляем устаревший параметр разметки
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
@@ -99,22 +99,23 @@ workflows:
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
           fi
 
-          # 2. Нейтрализуем жесткие версии во внутреннем build.gradle.kts, 
-          # чтобы они не конфликтовали с глобальной сборкой
-          INTERNAL_GRADLE="app/build.gradle.kts"
-          if [ -f "$INTERNAL_GRADLE" ]; then
-            echo "Корректируем внутренний файл конфигурации: $INTERNAL_GRADLE"
-            # Заменяем id("...") version "..." на чистый id("...") без указания версии
-            sed -i '' 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$INTERNAL_GRADLE" 2>/dev/null || sed -i 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$INTERNAL_GRADLE"
-            sed -i '' 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$INTERNAL_GRADLE" 2>/dev/null || sed -i 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$INTERNAL_GRADLE"
-          fi
+          # 2. Массово находим ВСЕ внутренние файлы build.gradle.kts проекта
+          # и вырезаем из них хардкод версий плагинов (application, library, kotlin),
+          # чтобы они полностью подчинялись корневому билдеру.
+          echo "Поиск и нейтрализация жестких версий во всех модулях..."
+          find . -name "build.gradle.kts" -not -path "./build.gradle.kts" | while read -r gradle_file; do
+            echo "Обработка файла: $gradle_file"
+            sed -i '' 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file"
+            sed -i '' 's/id(\"com.android.library\").*version.*/id(\"com.android.library\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"com.android.library\").*version.*/id(\"com.android.library\")/g' "$gradle_file"
+            sed -i '' 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file"
+          done
 
       - name: Recreate Safe Gradle Architecture
         script: |
           echo "=== Шаг 6: Развертывание гибкой архитектуры Gradle ==="
           rm -f build.gradle build.gradle.kts settings.gradle settings.gradle.kts
 
-          # Глобальный файл управления зависимостями
+          # Глобальный файл управления репозиториями
           cat <<EOF > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -133,10 +134,11 @@ workflows:
           include(":app")
           EOF
 
-          # Корневой скрипт, определяющий единые стабильные версии для всего проекта
+          # Корневой скрипт, регистрирующий стабильные версии для ВСЕХ типов модулей (App и Library)
           cat <<EOF > build.gradle.kts
           plugins {
               id("com.android.application") version "8.2.2" apply false
+              id("com.android.library") version "8.2.2" apply false
               id("org.jetbrains.kotlin.android") version "1.9.0" apply false
           }
           EOF
