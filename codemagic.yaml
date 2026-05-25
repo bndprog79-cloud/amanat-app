@@ -101,17 +101,16 @@ workflows:
         script: |
           echo "=== Шаг 6: Коррекция конфигурации Gradle и очистка плагинов ==="
           
-          # Очищаем внутренний app/build.gradle.kts от жестко заданных конфликтующих версий плагинов
           APP_BUILD="app/build.gradle.kts"
           if [ -f "$APP_BUILD" ]; then
-            echo "Очистка версий плагинов во внутреннем файле $APP_BUILD для предотвращения конфликтов..."
-            # Удаляем строки 'version "..."' внутри блока plugins модуля app, так как они управляются из корня
+            echo "Глубокая очистка объявлений плагинов во внутреннем файле $APP_BUILD..."
+            # Нам нужно удалить из внутреннего файла конструкции версий и флагов apply, 
+            # чтобы они не конфликтовали с глобальным buildscript
             sed -i '' 's/version "[^"]*"//g' "$APP_BUILD" 2>/dev/null || sed -i 's/version "[^"]*"//g' "$APP_BUILD"
-            # Если плагины объявлены с "version", убираем также "apply false"
             sed -i '' 's/, apply false//g' "$APP_BUILD" 2>/dev/null || sed -i 's/, apply false//g' "$APP_BUILD"
           fi
 
-          # Настраиваем чистый корневой settings.gradle.kts
+          # Настраиваем чистый, синтаксически верный settings.gradle.kts
           cat <<EOF > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -121,7 +120,7 @@ workflows:
               }
           }
           dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.PRESERVE_OTHER_REPOS)
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
               repositories {
                   google()
                   mavenCentral()
@@ -131,7 +130,7 @@ workflows:
           include(":app")
           EOF
 
-          # Настраиваем корневой build.gradle.kts, где централизованно задаем версии
+          # Настраиваем корневой build.gradle.kts с правильными версиями зависимостей
           cat <<EOF > build.gradle.kts
           buildscript {
               repositories {
