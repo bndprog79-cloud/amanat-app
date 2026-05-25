@@ -13,10 +13,21 @@ workflows:
         - push
 
     scripts:
+      - name: Extract project archive
+        script: |
+          echo "Распаковка архива проекта..."
+          tar -xzf amanat_app.tar.gz
+          # Проверяем, распаковался ли проект напрямую или создалась подпапка
+          ls -la
+
       - name: Get Flutter packages
         script: |
+          # Если архив распаковался в подпапку amanat_app, переходим в неё. 
+          # Если файлы распаковались сразу в корень, скрипт просто пойдет дальше.
+          if [ -d "amanat_app" ]; then cd amanat_app; fi
           flutter packages pub get
       
       - name: Build Android APK
         script: |
+          if [ -d "amanat_app" ]; then cd amanat_app; fi
           flutter build apk --release
