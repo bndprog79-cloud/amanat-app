@@ -13,16 +13,32 @@ workflows:
         - push
 
     scripts:
-      - name: Diagnostic - Check folder structure
+      - name: Extract project archive
         script: |
-          echo "==== РАСПАКОВКА АРХИВА ===="
+          echo "Распаковка архива..."
           tar -xzf amanat_app.tar.gz
+
+      - name: Get Flutter packages
+        script: |
+          echo "Поиск файла pubspec.yaml..."
+          # Автоматически находим папку, в которой лежит pubspec.yaml
+          FLUTTER_DIR=$(find . -name "pubspec.yaml" -exec dirname {} \; | head -n 1)
           
-          echo "==== ЧТО НАХОДИТСЯ В КОРНЕ КЛОНА ===="
-          ls -la
+          if [ -z "$FLUTTER_DIR" ]; then
+            echo "Ошибка: Файл pubspec.yaml не найден в архиве!"
+            exit 1
+          fi
           
-          echo "==== ПРОВЕРКА СОДЕРЖИМОГО ПАПКИ amanat_app (если она есть) ===="
-          if [ -d "amanat_app" ]; then ls -la amanat_app; else echo "Папки amanat_app не существует"; fi
+          echo "Проект Flutter найден в папке: $FLUTTER_DIR"
+          cd "$FLUTTER_DIR"
+          flutter packages pub get
           
-          echo "==== КОНЕЦ ДИАГНОСТИКИ ===="
-          exit 1
+          # Сохраняем путь для следующего шага сборки
+          echo "$FLUTTER_DIR" > "$BASEDIR/flutter_path.txt"
+      
+      - name: Build Android APK
+        script: |
+          # Считываем сохраненный путь к проекту
+          FLUTTER_DIR=$(cat "$BASEDIR/flutter_path.txt")
+          cd "$FLUTTER_DIR"
+          flutter build apk --release
