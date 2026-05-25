@@ -1,6 +1,6 @@
 workflows:
   android-workflow:
-    name: Android Build
+    name: Android Build AMANAT
     max_build_duration: 120
     instance_type: mac_mini_m1
 
@@ -12,40 +12,49 @@ workflows:
         - push
 
     scripts:
-      - name: Auto-detect and fix directory structure
+      - name: Extract project archive and fix structure
         script: |
-          echo "=== Автоматический поиск исходного кода приложения ==="
-          
-          # 1. Проверяем стандартный вариант
-          if [ -d "app" ]; then
-            echo "Стандартная папка 'app' на месте."
-          # 2. Проверяем вариант с опечаткой {, который был ранее
-          elif [ -d "{app" ]; then
-            echo "Найдена папка {app, исправляем имя на 'app'..."
-            mv "{app" "app"
+          echo "=== Шаг 1: Распаковка архива исходного кода ==="
+          if [ -f "amanat_app.tar.gz" ]; then
+            echo "Архив amanat_app.tar.gz найден. Распаковка..."
+            tar -xzf amanat_app.tar.gz
+            echo "Распаковка завершена."
           else
-            echo "Папка 'app' не найдена в корне. Ищем внутренний модуль Android..."
-            # Ищем, где лежит файл build.gradle или build.gradle.kts, исключая корень
-            FOUND_DIR=$(find . -maxdepth 3 -name "build.gradle*" ! -path "./build.gradle*" | head -n 1)
-            
-            if [ -n "$FOUND_DIR" ]; then
-              # Получаем имя папки, содержащей этот файл
-              ACTUAL_DIR=$(basename $(dirname "$FOUND_DIR"))
-              echo "Исходный код обнаружен в папке: $ACTUAL_DIR"
-              
-              if [ "$ACTUAL_DIR" != "." ] && [ "$ACTUAL_DIR" != "app" ]; then
-                echo "Переименовываем '$ACTUAL_DIR' в стандартную 'app'..."
-                mv "$ACTUAL_DIR" "app"
-              fi
-            else
-              echo "=== СТРУКТУРА РЕПОЗИТОРИЯ ДЛЯ ОТЛАДКИ ==="
-              ls -R
-              echo "Критическая ошибка: Не удалось локализовать файлы Android-проекта."
-              exit 1
+            echo "Критическая ошибка: Файл amanat_app.tar.gz не найден в корне репозитория!"
+            ls -la
+            exit 1
+          fi
+
+          echo "=== Шаг 2: Анализ распакованной структуры ==="
+          # Проверяем, куда распаковались файлы.
+          # Если они распаковались во вложенную папку (например, {app или amanat_app), приведем к стандарту.
+          if [ -d "{app" ]; then
+            echo "Обнаружена папка {app, переименовываем в стандартную 'app'..."
+            mv "{app" "app"
+          elif [ -d "amanat_app" ]; then
+            echo "Обнаружена папка amanat_app, переименовываем в 'app'..."
+            mv "amanat_app" "app"
+          fi
+
+          # Если вдруг проект распаковался так, что 'app' лежит внутри другой подпапки
+          if [ ! -d "app" ]; then
+            echo "Поиск папки приложения в подкаталогах..."
+            DETECTED_APP=$(find . -maxdepth 3 -type d -name "app" | head -n 1)
+            if [ -n "$DETECTED_APP" ] && [ "$DETECTED_APP" != "./app" ]; then
+              echo "Папка приложения найдена в: $DETECTED_APP. Перемещаем в корень..."
+              mv "$DETECTED_APP" ./app
             fi
           fi
 
-          echo "Генерация системных XML-файлов и адаптивных иконок..."
+          # Финальная проверка наличия папки приложения
+          if [ ! -d "app" ]; then
+            echo "Папка 'app' не найдена. Создаем базовую структуру, если файлы легли в корень напрямую..."
+            mkdir -p app
+            # Переносим всё, кроме системных файлов и архива, в папку app
+            find . -maxdepth 1 ! -name "." ! -name ".." ! -name "app" ! -name "amanat_app.tar.gz" ! -name "codemagic.yaml" ! -name "*.md" ! -name "*.txt" -exec mv {} app/ \;
+          fi
+
+          echo "=== Шаг 3: Генерация XML-ресурсов и иконок ==="
           RES_DIR="app/src/main/res"
           mkdir -p "$RES_DIR/xml"
           mkdir -p "$RES_DIR/mipmap-anydpi-v26"
@@ -82,16 +91,18 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter
         script: |
-          echo "Очистка MainScreen.kt от проблемного параметра..."
+          echo "=== Шаг 4: Очистка кода от устаревших параметров ==="
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
           if [ -n "$MAIN_SCREEN" ] && [ -f "$MAIN_SCREEN" ]; then
+            echo "Файл найден: $MAIN_SCREEN. Удаляем параметр tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
-            echo "Файл MainScreen.kt успешно очищен."
+          else
+            echo "Файл MainScreen.kt не найден в распакованном коде, пропускаем."
           fi
 
       - name: Recreate Gradle Build Configuration
         script: |
-          echo "Принудительное пересоздание корневой конфигурации Gradle..."
+          echo "=== Шаг 5: Конфигурация системных файлов Gradle ==="
           
           cat <<EOF > settings.gradle.kts
           pluginManagement {
@@ -132,9 +143,9 @@ workflows:
           }
           EOF
 
-      - name: Build APK
+      - name: Build Android APK
         script: |
-          echo "Запуск компиляции приложения..."
+          echo "=== Шаг 6: Запуск компиляции приложения ==="
           gradle :app:assembleRelease --no-daemon
 
     artifacts:
