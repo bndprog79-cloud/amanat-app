@@ -1,0 +1,20 @@
+workflows:
+  android-workflow:
+    name: Android Build
+    max_build_duration: 120
+    instance_type: mac_mini_m1
+    
+    environment:
+      java: java11
+    
+    triggering:
+      events:
+        - push
+    
+    scripts:
+      - name: Build APK
+        script: |
+          ./gradlew assembleDebug --stacktrace
+    
+    artifacts:
+      - app/build/outputs/apk/debug/**/*.apk
