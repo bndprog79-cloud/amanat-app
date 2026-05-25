@@ -99,7 +99,7 @@ workflows:
         script: |
           echo "=== Шаг 5: Конфигурация системных файлов Gradle ==="
           
-          # Настраиваем settings.gradle.kts с синтаксисом, совместимым с Gradle 8.x
+          # Оставляем централизованное управление репозиториями здесь
           cat <<EOF > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -119,7 +119,7 @@ workflows:
           include(":app")
           EOF
 
-          # Корневой build.gradle.kts
+          # Удаляем конфликтующий блок allprojects, оставляем только плагины сборки
           cat <<EOF > build.gradle.kts
           buildscript {
               repositories {
@@ -129,13 +129,6 @@ workflows:
               dependencies {
                   classpath("com.android.tools.build:gradle:8.2.2")
                   classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0")
-              }
-          }
-
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
               }
           }
           EOF
