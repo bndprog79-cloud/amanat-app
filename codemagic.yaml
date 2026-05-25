@@ -102,7 +102,7 @@ workflows:
           echo "=== Шаг 6: Развертывание гибкой архитектуры Gradle ==="
           rm -f build.gradle build.gradle.kts settings.gradle settings.gradle.kts
 
-          # Настраиваем корневой settings.gradle.kts
+          # Настраиваем корневой settings.gradle.kts без конфликтующих режимов
           cat <<EOF > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -112,7 +112,6 @@ workflows:
               }
           }
           dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.PRESERVE_OTHER_REPOS)
               repositories {
                   google()
                   mavenCentral()
@@ -122,7 +121,7 @@ workflows:
           include(":app")
           EOF
 
-          # В корневом build.gradle.kts мы принудительно внедряем Android-плагин в подпроект :app
+          # В корневом build.gradle.kts мы принудительно инжектим плагины в подпроект :app
           cat <<EOF > build.gradle.kts
           buildscript {
               repositories {
@@ -145,7 +144,6 @@ workflows:
       - name: Build Android APK
         script: |
           echo "=== Шаг 7: Запуск компиляции приложения ==="
-          # Сначала выведем список доступных тасок для отладки, если что-то пойдет не так
           gradle :app:tasks --no-daemon || true
           
           echo "Запуск финальной сборки..."
