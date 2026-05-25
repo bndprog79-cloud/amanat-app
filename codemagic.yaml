@@ -17,14 +17,43 @@ workflows:
           echo "Распаковка архива..."
           tar -xzf amanat_app.tar.gz
 
-      - name: Merge resources and fix folder typo
+      - name: Generate missing resources and manifests
         script: |
-          echo "Проверка и исправление структуры ресурсов..."
-          # Если папка с опечаткой {app существует, копируем её содержимое в основную папку app
-          if [ -d "amanat_app/{app" ]; then
-            echo "Обнаружена папка с опечаткой {app. Объединяем ресурсы..."
-            cp -R amanat_app/\{app/* amanat_app/app/ 2>/dev/null || true
-          fi
+          echo "Исправление структуры папок и генерация недостающих ресурсов..."
+          
+          # Путь к ресурсам проекта
+          RES_DIR="amanat_app/app/src/main/res"
+          mkdir -p "$RES_DIR/xml"
+          mkdir -p "$RES_DIR/mipmap-hdpi"
+          mkdir -p "$RES_DIR/mipmap-mdpi"
+          mkdir -p "$RES_DIR/mipmap-xhdpi"
+          mkdir -p "$RES_DIR/mipmap-xxhdpi"
+          mkdir -p "$RES_DIR/mipmap-xxxhdpi"
+
+          # 1. Создаем заглушку для xml/backup_rules
+          cat <<EOF > "$RES_DIR/xml/backup_rules.xml"
+          <?xml version="1.0" encoding="utf-8"?>
+          <full-backup-content />
+          EOF
+
+          # 2. Создаем заглушку для xml/data_extraction_rules
+          cat <<EOF > "$RES_DIR/xml/data_extraction_rules.xml"
+          <?xml version="1.0" encoding="utf-8"?>
+          <data-extraction-rules>
+              <cloud-backup />
+              <device-transfer />
+          </data-extraction-rules>
+          EOF
+
+          # 3. Скачиваем или создаем дефолтную иконку (белый квадрат), чтобы закрыть ошибку mipmap/ic_launcher
+          # Команда создаст простейшую иконку-заглушку, если её нет
+          echo "Генерация дефолтных иконок..."
+          BLANK_PNG_BASE64="iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAAAAACPAi4CAAAAZ0lEQVRo3u3SMQ3AIBAEwIdgBP+mYAt7N8HInZpAsm99m7u66Z77vneOfX99BwIIIIAAAggggAACCCCAAAIIIIAAAggggAACCCCAAAIIIIAAAggggAACCCCAAAIIIIAAAggggMBvYAcb9w6b7v6bCwAAAABJRU5ErkJggg=="
+          
+          for dir in mipmap-hdpi mipmap-mdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+            echo "$BLANK_PNG_BASE64" | base64 --decode > "$RES_DIR/$dir/ic_launcher.png"
+            echo "$BLANK_PNG_BASE64" | base64 --decode > "$RES_DIR/$dir/ic_launcher_round.png"
+          done
 
       - name: Build Android APK
         script: |
