@@ -20,18 +20,15 @@ workflows:
       - name: Generate missing resources and XML icons
         script: |
           echo "Исправление структуры папок и генерация адаптивных XML-иконок..."
-          
           RES_DIR="amanat_app/app/src/main/res"
           mkdir -p "$RES_DIR/xml"
           mkdir -p "$RES_DIR/mipmap-anydpi-v26"
 
-          # 1. Создаем заглушку для xml/backup_rules
           cat <<EOF > "$RES_DIR/xml/backup_rules.xml"
           <?xml version="1.0" encoding="utf-8"?>
           <full-backup-content />
           EOF
 
-          # 2. Создаем заглушку для xml/data_extraction_rules
           cat <<EOF > "$RES_DIR/xml/data_extraction_rules.xml"
           <?xml version="1.0" encoding="utf-8"?>
           <data-extraction-rules>
@@ -40,7 +37,6 @@ workflows:
           </data-extraction-rules>
           EOF
 
-          # 3. Генерируем правильную векторную XML-заглушку для фонов иконки
           cat <<EOF > "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml"
           <?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
@@ -55,11 +51,24 @@ workflows:
           </adaptive-icon>
           EOF
 
-          # Дублируем для круглой версии, чтобы закрыть все требования манифеста
           cp "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml" "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml"
-
-          # Удаляем старые сбойные png-файлы из прошлых попыток, если они остались
           rm -rf $RES_DIR/mipmap-*dpi/ic_launcher*.png
+
+      - name: Fix Material Icons Dependencies
+        script: |
+          echo "Добавление расширенных иконок Material в build.gradle.kts..."
+          GRADLE_FILE="amanat_app/app/build.gradle.kts"
+          
+          # Проверяем наличие файла конфигурации сборки
+          if [ -f "$GRADLE_FILE" ]; then
+            # Вставляем зависимость материальных иконок перед закрывающей скобкой блока dependencies
+            sed -i '' '/dependencies {/a\
+                implementation("androidx.compose.material:material-icons-extended")\
+            ' "$GRADLE_FILE" 2>/dev/null || sed -i ' /dependencies {/a implementation("androidx.compose.material:material-icons-extended")' "$GRADLE_FILE"
+            echo "Файл конфигурации успешно обновлен."
+          else
+            echo "Файл build.gradle.kts не найден по пути $GRADLE_FILE"
+          fi
 
       - name: Build Android APK
         script: |
