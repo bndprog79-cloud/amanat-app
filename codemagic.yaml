@@ -103,16 +103,17 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter and Clear Hardcoded Versions
         script: |
-          echo "=== Шаг 5: Точечная очистка конфигураций плагинов ==="
+          echo "=== Шаг 5: Точечная очистка конфигураций плагинов и кода ==="
           
-          # 1. Удаляем параметр разметки Compose
+          # Корректируем импорт индикатора вкладок под Material 3 или Material 2 в MainScreen.kt
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
           if [ -n "$MAIN_SCREEN" ] && [ -f "$MAIN_SCREEN" ]; then
-            echo "Файл найден: $MAIN_SCREEN. Удаляем параметр tabIndicatorOffset..."
+            echo "Исправление импорта tabIndicatorOffset в: $MAIN_SCREEN"
+            # Удаляем старые ошибочные параметры, если они остались
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
           fi
 
-          # 2. Очищаем файлы build.gradle.kts от зашитых версий плагинов
+          # Очищаем файлы build.gradle.kts от зашитых версий плагинов
           find . -name "build.gradle.kts" -not -path "./build.gradle.kts" | while read -r gradle_file; do
             echo "Корректируем плагины в: $gradle_file"
             sed -i '' 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file"
@@ -120,7 +121,6 @@ workflows:
             sed -i '' 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file"
           done
 
-          # 3. Устранение старого скрипта
           if [ -f "app/build.gradle.kts" ]; then
             mv app/build.gradle.kts app/build.gradle.kts.old
           fi
@@ -169,7 +169,7 @@ workflows:
           android.suppressUnsupportedCompileSdk=34
           EOF
 
-          # 4. Создаем чистый app/build.gradle.kts с поддержкой расширенных иконок
+          # 4. Создаем чистый app/build.gradle.kts со ВСЕМИ необходимыми Compose-зависимостями
           cat <<EOF > app/build.gradle.kts
           plugins {
               id("com.android.application")
@@ -232,10 +232,17 @@ workflows:
               implementation("androidx.compose.ui:ui")
               implementation("androidx.compose.ui:ui-graphics")
               implementation("androidx.compose.ui:ui-tooling-preview")
-              implementation("androidx.compose.material3:material3")
               
-              // ДОБАВЛЕНО: Расширенная библиотека иконок для PhotoCamera, Map, Mail и т.д.
+              // Набор библиотек разметки и элементов интерфейса
+              implementation("androidx.compose.material3:material3")
+              implementation("androidx.compose.material:material")
               implementation("androidx.compose.material:material-icons-extended")
+              
+              // ДОБАВЛЕНО: Архитектурные компоненты жизненного цикла для функции viewModel()
+              implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
+              
+              // ДОБАВЛЕНО: Компоненты навигации Jetpack Compose
+              implementation("androidx.navigation:navigation-compose:2.6.0")
               
               testImplementation("junit:junit:4.13.2")
               androidTestImplementation("androidx.test.ext:junit:1.1.5")
