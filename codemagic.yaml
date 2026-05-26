@@ -92,7 +92,7 @@ workflows:
         script: |
           echo "=== Шаг 5: Точечная очистка конфигураций плагинов ==="
           
-          # 1. Удаляем устаревший параметр разметки Compose
+          # 1. Удаляем параметр разметки Compose
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
           if [ -n "$MAIN_SCREEN" ] && [ -f "$MAIN_SCREEN" ]; then
             echo "Файл найден: $MAIN_SCREEN. Удаляем параметр tabIndicatorOffset..."
@@ -107,17 +107,17 @@ workflows:
             sed -i '' 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file"
           done
 
-          # 3. Полное устранение конфликта с таской 'clean' в app/build.gradle.kts
+          # 3. Исключаем конфликты конкретно в app/build.gradle.kts
           if [ -f "app/build.gradle.kts" ]; then
-            echo "Нейтрализация старого скрипта сборки приложения..."
-            # Переименовываем старый файл, чтобы он не конфликтовал
+            echo "Удаляем объявление плагина library из модуля приложения..."
+            sed -i '' '/com.android.library/d' "app/build.gradle.kts" 2>/dev/null || sed -i '/com.android.library/d' "app/build.gradle.kts"
             mv app/build.gradle.kts app/build.gradle.kts.old
           fi
 
       - name: Recreate Safe Gradle Architecture
         script: |
           echo "=== Шаг 6: Развертывание гибкой архитектуры Gradle ==="
-          rm -f build.gradle build.gradle.kts settings.gradle settings.gradle.kts
+          rm -f build.gradle build.gradle.kts settings.gradle settings.gradle.kts gradle.properties
 
           # 1. Глобальный файл управления репозиториями
           cat <<EOF > settings.gradle.kts
@@ -138,7 +138,7 @@ workflows:
           include(":app")
           EOF
 
-          # 2. Корневой скрипт сборки с правильной таской clean
+          # 2. Корневой скрипт сборки
           cat <<EOF > build.gradle.kts
           plugins {
               id("com.android.application") version "8.1.0" apply false
@@ -151,8 +151,14 @@ workflows:
           }
           EOF
 
-          # 3. Создаем абсолютно чистый и современный app/build.gradle.kts
-          # Он автоматически подхватит весь исходный код приложения AMANAT
+          # 3. ИСПРАВЛЕНИЕ: Генерация файла gradle.properties с включенным AndroidX
+          cat <<EOF > gradle.properties
+          android.useAndroidX=true
+          android.enableJetifier=true
+          android.suppressUnsupportedCompileSdk=34
+          EOF
+
+          # 4. Создаем абсолютно чистый и современный app/build.gradle.kts
           cat <<EOF > app/build.gradle.kts
           plugins {
               id("com.android.application")
@@ -160,7 +166,7 @@ workflows:
           }
 
           android {
-              namespace = "com.example.amanat" // Стандартное имя пакета
+              namespace = "com.example.amanat"
               compileSdk = 34
 
               defaultConfig {
@@ -206,12 +212,10 @@ workflows:
           }
 
           dependencies {
-              // Базовые AndroidX и Jetpack Compose зависимости
               implementation("androidx.core:core-ktx:1.10.1")
               implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
               implementation("androidx.activity:activity-compose:1.7.2")
               
-              // Платформа Jetpack Compose
               val composeBom = platform("androidx.compose:compose-bom:2023.06.01")
               implementation(composeBom)
               implementation("androidx.compose.ui:ui")
@@ -219,7 +223,6 @@ workflows:
               implementation("androidx.compose.ui:ui-tooling-preview")
               implementation("androidx.compose.material3:material3")
               
-              // Тестирование
               testImplementation("junit:junit:4.13.2")
               androidTestImplementation("androidx.test.ext:junit:1.1.5")
               androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
