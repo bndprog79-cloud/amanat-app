@@ -26,6 +26,7 @@ workflows:
           fi
 
           echo "=== Шаг 2: Анализ и выравнивание структуры папок ==="
+          # 1. Сначала исправим возможные опечатки в именах папок верхнего уровня
           if [ -d "{app" ]; then
             echo "Исправление опечатки папки {app -> app"
             mv "{app" "app"
@@ -34,16 +35,34 @@ workflows:
             mv "amanat_app" "app"
           fi
 
-          if [ ! -d "app" ]; then
-            DETECTED_APP=$(find . -maxdepth 3 -type d -name "app" | head -n 1)
-            if [ -n "$DETECTED_APP" ] && [ "$DETECTED_APP" != "./app" ]; then
-              mv "$DETECTED_APP" ./app
+          # 2. УМНЫЙ ПОИСК: Ищем, где на самом деле лежит AndroidManifest.xml
+          echo "Поиск главного файла AndroidManifest.xml..."
+          MANIFEST_PATH=$(find . -name "AndroidManifest.xml" -not -path "*/build/*" -not -path "./app/src/main/AndroidManifest.xml" | head -n 1)
+
+          if [ -n "$MANIFEST_PATH" ]; then
+            echo "Манифест найден по пути: $MANIFEST_PATH"
+            # Получаем папку, в которой лежитsrc или сам манифест (поднимаемся до уровня /src или родителя)
+            SRC_PARENT_DIR=$(echo "$MANIFEST_PATH" | sed 's/\/src\/main\/AndroidManifest.xml//' | sed 's/\/AndroidManifest.xml//')
+            
+            if [ -d "$SRC_PARENT_DIR/src" ] && [ "$SRC_PARENT_DIR" != "./app" ]; then
+              echo "Переносим найденную структуру src из $SRC_PARENT_DIR в ./app/"
+              mkdir -p app
+              cp -R "$SRC_PARENT_DIR/src" app/
+            elif [ -f "$MANIFEST_PATH" ] && [ "$SRC_PARENT_DIR" != "./app/src/main" ]; then
+              echo "Манифест лежал изолированно. Создаем структуру вручную..."
+              mkdir -p app/src/main
+              cp "$MANIFEST_PATH" app/src/main/
+              # Если рядом были папки java/kotlin/res, забираем их
+              if [ -d "$SRC_PARENT_DIR/java" ]; then cp -R "$SRC_PARENT_DIR/java" app/src/main/; fi
+              if [ -d "$SRC_PARENT_DIR/kotlin" ]; then cp -R "$SRC_PARENT_DIR/kotlin" app/src/main/; fi
+              if [ -d "$SRC_PARENT_DIR/res" ]; then cp -R "$SRC_PARENT_DIR/res" app/src/main/; fi
             fi
           fi
 
-          if [ ! -d "app" ]; then
-            mkdir -p app
-            find . -maxdepth 1 ! -name "." ! -name ".." ! -name "app" ! -name "amanat_app.tar.gz" ! -name "codemagic.yaml" ! -name "*.md" ! -name "*.txt" -exec mv {} app/ \;
+          # 3. Финальная проверка базовой структуры
+          if [ ! -d "app/src/main" ]; then
+            echo "Предупреждение: Базовая структура не создана автоматикой. Создаем аварийный контейнер..."
+            mkdir -p app/src/main
           fi
 
           echo "=== Шаг 3: Перенос оригинальных файлов настроек Gradle ==="
@@ -107,10 +126,9 @@ workflows:
             sed -i '' 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file"
           done
 
-          # 3. Исключаем конфликты конкретно в app/build.gradle.kts
+          # 3. Полное устранение конфликта с таской 'clean' в app/build.gradle.kts
           if [ -f "app/build.gradle.kts" ]; then
-            echo "Удаляем объявление плагина library из модуля приложения..."
-            sed -i '' '/com.android.library/d' "app/build.gradle.kts" 2>/dev/null || sed -i '/com.android.library/d' "app/build.gradle.kts"
+            echo "Нейтрализация старого скрипта сборки приложения..."
             mv app/build.gradle.kts app/build.gradle.kts.old
           fi
 
@@ -151,7 +169,7 @@ workflows:
           }
           EOF
 
-          # 3. ИСПРАВЛЕНИЕ: Генерация файла gradle.properties с включенным AndroidX
+          # 3. Генерация файла gradle.properties с включенным AndroidX
           cat <<EOF > gradle.properties
           android.useAndroidX=true
           android.enableJetifier=true
