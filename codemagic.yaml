@@ -92,14 +92,14 @@ workflows:
         script: |
           echo "=== Шаг 5: Точечная очистка конфигураций плагинов и устаревших задач ==="
           
-          # 1. Удаляем устаревший параметр разметки Compose
+          # 1. Удаляем параметр разметки Compose
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
           if [ -n "$MAIN_SCREEN" ] && [ -f "$MAIN_SCREEN" ]; then
             echo "Файл найден: $MAIN_SCREEN. Удаляем параметр tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
           fi
 
-          # 2. Очищаем файлы build.gradle.kts от зашитых версий
+          # 2. Очищаем файлы build.gradle.kts от зашитых версий плагинов
           find . -name "build.gradle.kts" -not -path "./build.gradle.kts" | while read -r gradle_file; do
             echo "Корректируем плагины в: $gradle_file"
             sed -i '' 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file"
@@ -107,14 +107,15 @@ workflows:
             sed -i '' 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file"
           done
 
-          # 3. Исключаем конфликты плагина библиотек в основном модуле
+          # 3. Исключаем конфликты конкретно в app/build.gradle.kts
           if [ -f "app/build.gradle.kts" ]; then
-            echo "Удаление лишних зависимостей и дублирующихся тасок из app/build.gradle.kts..."
+            echo "Деликатная нейтрализация конфликтов в app/build.gradle.kts..."
             sed -i '' '/com.android.library/d' "app/build.gradle.kts" 2>/dev/null || sed -i '/com.android.library/d' "app/build.gradle.kts"
             
-            # Удаляем старое объявление таски clean (включая многострочный блок, если он есть)
-            # Находим строку с 'task("clean"' или 'tasks.register("clean"' и очищаем её вместе со следующей (где обычно лежит buildDir)
-            sed -i '' '/task.*"clean"/,+2d' "app/build.gradle.kts" 2>/dev/null || sed -i '/task.*"clean"/,+2d' "app/build.gradle.kts"
+            # БЕЗОПАСНАЯ НЕЙТРАЛИЗАЦИЯ: Просто закомментируем строки, содержащие таску clean и старый buildDir,
+            # вместо их физического удаления. Так мы гарантированно сохраним compileSdkVersion!
+            sed -i '' 's/.*"clean".*$/\/\/ Срезано билдером/g' "app/build.gradle.kts" 2>/dev/null || sed -i 's/.*"clean".*$/\/\/ Срезано билдером/g' "app/build.gradle.kts"
+            sed -i '' 's/.*buildDir.*$/\/\/ Срезано билдером/g' "app/build.gradle.kts" 2>/dev/null || sed -i 's/.*buildDir.*$/\/\/ Срезано билдером/g' "app/build.gradle.kts"
           fi
 
       - name: Recreate Safe Gradle Architecture
