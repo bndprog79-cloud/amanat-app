@@ -90,7 +90,7 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter and Clear Hardcoded Versions
         script: |
-          echo "=== Шаг 5: Очистка кода и глобальная адаптация плагинов ==="
+          echo "=== Шаг 5: Точечная очистка конфигураций плагинов ==="
           
           # 1. Удаляем устаревший параметр разметки
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
@@ -99,16 +99,21 @@ workflows:
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
           fi
 
-          # 2. Массово находим ВСЕ внутренние файлы build.gradle.kts проекта
-          # и вырезаем из них хардкод версий плагинов (application, library, kotlin),
-          # чтобы они полностью подчинялись корневому билдеру.
-          echo "Поиск и нейтрализация жестких версий во всех модулях..."
+          # 2. Очищаем конкретно файлы build.gradle.kts от зашитых версий, разделяя логику
           find . -name "build.gradle.kts" -not -path "./build.gradle.kts" | while read -r gradle_file; do
-            echo "Обработка файла: $gradle_file"
+            echo "Корректируем плагины в: $gradle_file"
+            
+            # Убираем жесткие версии, оставляя только чистые id
             sed -i '' 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file"
             sed -i '' 's/id(\"com.android.library\").*version.*/id(\"com.android.library\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"com.android.library\").*version.*/id(\"com.android.library\")/g' "$gradle_file"
             sed -i '' 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file"
           done
+
+          # 3. Принудительно гарантируем, что в основном модуле приложения (app) НЕТ библиотечного плагина
+          if [ -f "app/build.gradle.kts" ]; then
+            echo "Проверка исключения конфликтов в app/build.gradle.kts..."
+            sed -i '' '/com.android.library/d' "app/build.gradle.kts" 2>/dev/null || sed -i '/com.android.library/d' "app/build.gradle.kts"
+          fi
 
       - name: Recreate Safe Gradle Architecture
         script: |
@@ -134,12 +139,12 @@ workflows:
           include(":app")
           EOF
 
-          # Корневой скрипт, регистрирующий стабильные версии для ВСЕХ типов модулей (App и Library)
+          # Корневой скрипт, регистрирующий базовую стабильную версию 8.1.0 под кодовую базу приложения
           cat <<EOF > build.gradle.kts
           plugins {
-              id("com.android.application") version "8.2.2" apply false
-              id("com.android.library") version "8.2.2" apply false
-              id("org.jetbrains.kotlin.android") version "1.9.0" apply false
+              id("com.android.application") version "8.1.0" apply false
+              id("com.android.library") version "8.1.0" apply false
+              id("org.jetbrains.kotlin.android") version "1.8.10" apply false
           }
           EOF
 
