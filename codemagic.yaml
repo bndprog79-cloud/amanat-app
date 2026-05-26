@@ -199,6 +199,8 @@ workflows:
               }
               kotlinOptions {
                   jvmTarget = "17"
+                  // Добавляем автоматическое подавление предупреждений экспериментального API
+                  freeCompilerArgs += listOf("-opt-in=androidx.compose.material3.ExperimentalMaterial3Api", "-opt-in=androidx.compose.material.ExperimentalMaterialApi")
               }
               buildFeatures {
                   compose = true
@@ -244,9 +246,8 @@ workflows:
       - name: Build Android APK
         script: |
           echo "=== Шаг 7: Запуск компиляции приложения ==="
-          # ИЗМЕНЕНО: собираем дебаг-версию, чтобы обойти требование цифровой подписи релизов
-          gradle :app:assembleDebug --no-daemon
+          # Добавляем детальный вывод ошибок компилятора в консоль на случай падения
+          gradle :app:assembleDebug --no-daemon --stacktrace || { echo "=== КРИТИЧЕСКАЯ ОШИБКА: Выводим лог компиляции ==="; find app/build/reports -type f -name "*.html" -exec cat {} \; 2>/dev/null; exit 1; }
 
     artifacts:
       - "**/build/outputs/apk/debug/*.apk"
-      - "**/build/outputs/apk/release/*.apk"
