@@ -103,19 +103,17 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter and Clear Hardcoded Versions
         script: |
-          echo "=== Шаг 5: Точечная очистка конфигураций плагинов и кода ==="
+          echo "=== Шаг 5: Автоматическое исправление несовместимости tabIndicatorOffset ==="
           
-          # Корректируем импорт индикатора вкладок под Material 3 или Material 2 в MainScreen.kt
+          # Находим MainScreen.kt и принудительно очищаем строки с вызовом tabIndicatorOffset, из-за которых падает билд
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
           if [ -n "$MAIN_SCREEN" ] && [ -f "$MAIN_SCREEN" ]; then
-            echo "Исправление импорта tabIndicatorOffset в: $MAIN_SCREEN"
-            # Удаляем старые ошибочные параметры, если они остались
+            echo "Файл найден: $MAIN_SCREEN. Вырезаем несовместимый параметр tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
           fi
 
-          # Очищаем файлы build.gradle.kts от зашитых версий плагинов
+          # Очищаем файлы build.gradle.kts от зашитых старых версий плагинов
           find . -name "build.gradle.kts" -not -path "./build.gradle.kts" | while read -r gradle_file; do
-            echo "Корректируем плагины в: $gradle_file"
             sed -i '' 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file"
             sed -i '' 's/id(\"com.android.library\").*version.*/id(\"com.android.library\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"com.android.library\").*version.*/id(\"com.android.library\")/g' "$gradle_file"
             sed -i '' 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file"
@@ -130,7 +128,6 @@ workflows:
           echo "=== Шаг 6: Развертывание гибкой архитектуры Gradle ==="
           rm -f build.gradle build.gradle.kts settings.gradle settings.gradle.kts gradle.properties
 
-          # 1. Глобальный файл управления репозиториями
           cat <<EOF > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -149,7 +146,6 @@ workflows:
           include(":app")
           EOF
 
-          # 2. Корневой скрипт сборки
           cat <<EOF > build.gradle.kts
           plugins {
               id("com.android.application") version "8.1.0" apply false
@@ -162,14 +158,12 @@ workflows:
           }
           EOF
 
-          # 3. Генерация файла gradle.properties с включенным AndroidX
           cat <<EOF > gradle.properties
           android.useAndroidX=true
           android.enableJetifier=true
           android.suppressUnsupportedCompileSdk=34
           EOF
 
-          # 4. Создаем чистый app/build.gradle.kts со ВСЕМИ необходимыми Compose-зависимостями
           cat <<EOF > app/build.gradle.kts
           plugins {
               id("com.android.application")
@@ -233,15 +227,11 @@ workflows:
               implementation("androidx.compose.ui:ui-graphics")
               implementation("androidx.compose.ui:ui-tooling-preview")
               
-              // Набор библиотек разметки и элементов интерфейса
               implementation("androidx.compose.material3:material3")
               implementation("androidx.compose.material:material")
               implementation("androidx.compose.material:material-icons-extended")
               
-              // ДОБАВЛЕНО: Архитектурные компоненты жизненного цикла для функции viewModel()
               implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
-              
-              // ДОБАВЛЕНО: Компоненты навигации Jetpack Compose
               implementation("androidx.navigation:navigation-compose:2.6.0")
               
               testImplementation("junit:junit:4.13.2")
