@@ -90,29 +90,31 @@ workflows:
 
       - name: Safe Remove Tab Indicator Parameter and Clear Hardcoded Versions
         script: |
-          echo "=== Шаг 5: Точечная очистка конфигураций плагинов ==="
+          echo "=== Шаг 5: Точечная очистка конфигураций плагинов и устаревших задач ==="
           
-          # 1. Удаляем устаревший параметр разметки
+          # 1. Удаляем устаревший параметр разметки Compose
           MAIN_SCREEN=$(find . -name "MainScreen.kt" | head -n 1)
           if [ -n "$MAIN_SCREEN" ] && [ -f "$MAIN_SCREEN" ]; then
             echo "Файл найден: $MAIN_SCREEN. Удаляем параметр tabIndicatorOffset..."
             sed -i '' '/tabIndicatorOffset/d' "$MAIN_SCREEN" 2>/dev/null || sed -i '/tabIndicatorOffset/d' "$MAIN_SCREEN"
           fi
 
-          # 2. Очищаем конкретно файлы build.gradle.kts от зашитых версий, разделяя логику
+          # 2. Очищаем файлы build.gradle.kts от зашитых версий
           find . -name "build.gradle.kts" -not -path "./build.gradle.kts" | while read -r gradle_file; do
             echo "Корректируем плагины в: $gradle_file"
-            
-            # Убираем жесткие версии, оставляя только чистые id
             sed -i '' 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"com.android.application\").*version.*/id(\"com.android.application\")/g' "$gradle_file"
             sed -i '' 's/id(\"com.android.library\").*version.*/id(\"com.android.library\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"com.android.library\").*version.*/id(\"com.android.library\")/g' "$gradle_file"
             sed -i '' 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file" 2>/dev/null || sed -i 's/id(\"org.jetbrains.kotlin.android\").*version.*/id(\"org.jetbrains.kotlin.android\")/g' "$gradle_file"
           done
 
-          # 3. Принудительно гарантируем, что в основном модуле приложения (app) НЕТ библиотечного плагина
+          # 3. Исключаем конфликты плагина библиотек в основном модуле
           if [ -f "app/build.gradle.kts" ]; then
-            echo "Проверка исключения конфликтов в app/build.gradle.kts..."
+            echo "Удаление лишних зависимостей и дублирующихся тасок из app/build.gradle.kts..."
             sed -i '' '/com.android.library/d' "app/build.gradle.kts" 2>/dev/null || sed -i '/com.android.library/d' "app/build.gradle.kts"
+            
+            # Удаляем старое объявление таски clean (включая многострочный блок, если он есть)
+            # Находим строку с 'task("clean"' или 'tasks.register("clean"' и очищаем её вместе со следующей (где обычно лежит buildDir)
+            sed -i '' '/task.*"clean"/,+2d' "app/build.gradle.kts" 2>/dev/null || sed -i '/task.*"clean"/,+2d' "app/build.gradle.kts"
           fi
 
       - name: Recreate Safe Gradle Architecture
@@ -139,7 +141,7 @@ workflows:
           include(":app")
           EOF
 
-          # Корневой скрипт, регистрирующий базовую стабильную версию 8.1.0 под кодовую базу приложения
+          # Корневой скрипт с базовыми стабильными версиями
           cat <<EOF > build.gradle.kts
           plugins {
               id("com.android.application") version "8.1.0" apply false
